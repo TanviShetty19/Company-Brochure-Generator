@@ -1,127 +1,145 @@
 """
-Configuration for the Company Brochure Generator.
-Supports multiple LLM providers with Ollama as the default.
+Configuration Module
+
+Supports multiple LLM providers:
+- Ollama (default, free, local)
+- OpenAI (paid)
+- Google Gemini (paid)
 """
+
 import os
 from dotenv import load_dotenv
+from typing import Dict, Optional
+
+# Load environment variables
 load_dotenv(override=True)
 
 # ============================================
-# Provider Configuration
+# Provider Selection
 # ============================================
 
-# Choose your provider: 'ollama', 'openai', or 'gemini'
-LLM_PROVIDER=os.getenv("LLM_PROVIDER","OLLAMA").lower()
+LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'ollama').lower()
 
-# Ollama Configuration (Default - Free & Local)
+# ============================================
+# Provider Configurations
+# ============================================
+
+# Ollama (Free, Local)
 OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434/v1')
-OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'llama3.2:1b')  # or 'deepseek-r1:1.5b'
-# OpenAI Configuration (Paid - Optional)
+OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'llama3.2:1b')
+
+# OpenAI (Paid)
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')
 
-# Google Gemini Configuration (Paid - Optional)
+# Google Gemini (Paid)
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash-lite')
 GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/'
 
 # ============================================
-# Provider Resolution
+# Application Settings
 # ============================================
-def get_provider__config():
-    if LLM_PROVIDER == "ollama":
-        return {
-            "base_url": OLLAMA_BASE_URL,,
-            "api_key":"ollama",
-            "model": OLLAMA_MODEL
-        }
-    elif LLM_PROVIDER == "openai":
-        return {
-            "base_url": None,
-            "api_key": OPENAI_API_KEY,
-            "model": OPENAI_MODEL
-        }
-    elif LLM_PROVIDER == "gemini":
-        return {
-            "base_url": GEMINI_BASE_URL,
-            "api_key": GEMINI_API_KEY,
-            "model": GEMINI_MODEL
-        }
+
+MAX_CONTENT_LENGTH = int(os.getenv('MAX_CONTENT_LENGTH', '5000'))
+CACHE_ENABLED = os.getenv('CACHE_ENABLED', 'true').lower() == 'true'
+CACHE_EXPIRY_DAYS = int(os.getenv('CACHE_EXPIRY_DAYS', '7'))
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+OUTPUT_DIR = os.getenv('OUTPUT_DIR', 'output')
+CACHE_DIR = os.getenv('CACHE_DIR', 'cache')
+LOG_DIR = os.getenv('LOG_DIR', 'logs')
+
+
+def get_provider_config() -> Dict[str, Optional[str]]:
+    """
+    Get configuration for the selected provider.
+    
+    Returns:
+        Dict with keys: 'base_url', 'api_key', 'model', 'provider'
+        
+    Raises:
+        ValueError: If configuration is invalid
+    """
+    config = {'provider': LLM_PROVIDER}
+    
+    if LLM_PROVIDER == 'ollama':
+        config.update({
+            'base_url': OLLAMA_BASE_URL,
+            'api_key': 'ollama',  # Any string works
+            'model': OLLAMA_MODEL
+        })
+    elif LLM_PROVIDER == 'openai':
+        if not OPENAI_API_KEY:
+            raise ValueError(
+                "OpenAI API key not found. "
+                "Set OPENAI_API_KEY in .env file"
+            )
+        config.update({
+            'base_url': None,
+            'api_key': OPENAI_API_KEY,
+            'model': OPENAI_MODEL
+        })
+    elif LLM_PROVIDER == 'gemini':
+        if not GEMINI_API_KEY:
+            raise ValueError(
+                "Gemini API key not found. "
+                "Set GEMINI_API_KEY in .env file"
+            )
+        config.update({
+            'base_url': GEMINI_BASE_URL,
+            'api_key': GEMINI_API_KEY,
+            'model': GEMINI_MODEL
+        })
     else:
-        raise ValueError(f"Unsupported LLM provider: {LLM_PROVIDER}. Please choose 'ollama', 'openai', or 'gemini'.")
+        raise ValueError(f"Unsupported provider: {LLM_PROVIDER}")
+    
+    return config
+
+
+def get_provider_summary() -> str:
+    """Get a human-readable configuration summary."""
+    config = get_provider_config()
+    return f"""
+Provider Configuration
+---------------------
+Provider : {LLM_PROVIDER.upper()}
+Model    : {config['model']}
+Base URL : {config['base_url'] or 'Default'}
+"""
+
 
 # ============================================
-# Application Configuration
+# Model Registry
 # ============================================
-#Content limits for the brochure generation
-MAX_CONTETNT_LENGTH = 5000  # Max characters for input content
-MAX_TOTAL_TOKENS=8000  # Max tokens for the entire response (adjust based on provider limits)
-#Caching
-CACHE_ENABLED =True
-CACHE_EXPIRY_DAYS=7
-#Logging
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-#Output
-OUTPUT_DIR = os.getenv("OUTPUT_DIR","output")
-CACHE_DIR = os.getenv("CACHE_DIR","cache")
-LOG_DIR = os.getenv("LOG_DIR","logs")
 
-# ============================================
-# Model Registry - Document which models work
-# ============================================
-# This registry helps users understand which models are available for each provider, their characteristics, and recommendations.
-# You can add or remove models as needed. Also you could update  recommendations based on your testing and user feedback. This is meant to be a living document that evolves with the project.
-
-MODEL_REGISTRY = {
+AVAILABLE_MODELS = {
     'ollama': {
-        'llama3.2:1b': {
-            'description': 'Lightweight Llama 3.2 (1B) - Fast, works on most computers',
-            'recommended': True
-        },
-        'llama3.2': {
-            'description': 'Full Llama 3.2 (3B) - Better quality, needs more RAM',
-            'recommended': False
-        },
-        'deepseek-r1:1.5b': {
-            'description': 'DeepSeek distilled (1.5B) - Good for reasoning tasks',
-            'recommended': False
-        },
-        'phi3:mini': {
-            'description': 'Microsoft Phi-3 Mini - Good balance of quality/speed',
-            'recommended': False
-        }
+        'llama3.2:1b': 'Recommended for most users, fast, 1B params',
+        'llama3.2': 'Full version, better quality, 3B params',
+        'deepseek-r1:1.5b': 'Reasoning-focused, 1.5B params',
+        'phi3:mini': 'Microsoft Phi-3, good balance'
     },
     'openai': {
-        'gpt-4.1-mini': {'description': 'OpenAI\'s latest small model', 'recommended': True},
-        'gpt-5-nano': {'description': 'OpenAI\'s smallest model', 'recommended': False}
+        'gpt-4.1-mini': 'Fast, cheap, good quality',
+        'gpt-5-nano': 'Smallest OpenAI model'
     },
     'gemini': {
-        'gemini-2.5-flash-lite': {'description': 'Google\'s fast, cheap model', 'recommended': True}
+        'gemini-2.5-flash-lite': 'Google\'s fast, cheap option'
     }
 }
 
+
 # ============================================
-# Helper Functions
+# Version Information
 # ============================================
 
-def get_provider_summary():
-    """Get a human-readable summary of the current configuration."""
-    config = get_provider_config()
-    return f"""
-Provider: {LLM_PROVIDER.upper()}
-Model: {config['model']}
-Base URL: {config['base_url'] or 'Default OpenAI URL'}
-"""
+__version__ = '0.1.0'
+__author__ = 'Tanvi Shetty'
 
-def list_available_models():
-    """List all available models for the current provider."""
-    if LLM_PROVIDER in MODEL_REGISTRY:
-        return MODEL_REGISTRY[LLM_PROVIDER]
-    return {}
 
 if __name__ == "__main__":
-    print("Current Configuration:")
+    # Test configuration
     print(get_provider_summary())
-    print("\nAvailable models for this provider:")
-    for model, info in list_available_models().items():
-        print(f"  - {model}: {info['description']}")
+    print("\nAvailable models:")
+    for model, desc in AVAILABLE_MODELS.get(LLM_PROVIDER, {}).items():
+        print(f"  - {model}: {desc}")
