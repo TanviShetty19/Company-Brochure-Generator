@@ -1,0 +1,17 @@
+# Core dependencies
+openai>=1.0.0
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+python-dotenv>=1.0.0
+
+# Optional for Ollama (already installed with Ollama)
+# No additional packages needed for Ollama!
+
+# Optional for enhanced output
+markdown>=3.5.0
+# weasyprint>=60.0.0  # For PDF export (optional)
+# jinja2>=3.1.0       # For HTML templates (optional)
+
+# For development
+pytest>=7.4.0
+black>=23.0.0
