@@ -1,5 +1,5 @@
 """
-Web Scraping Module with Error Handling
+Web Scraping Module with Caching Support
 """
 
 import requests
@@ -10,6 +10,7 @@ import logging
 
 from logger import logger
 from retry_utils import retry_on_error
+from cache_manager import cache
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -19,19 +20,28 @@ HEADERS = {
 def fetch_website_contents(
     url: str, 
     max_length: int = 5000,
-    timeout: int = 10
+    timeout: int = 10,
+    use_cache: bool = True
 ) -> str:
     """
-    Fetch and parse website content with error handling.
+    Fetch and parse website content with caching support.
     
     Args:
         url: Website URL to fetch
         max_length: Maximum characters to return
         timeout: Request timeout in seconds
+        use_cache: Whether to use cached content
         
     Returns:
         Cleaned text content from the website
     """
+    # Check cache first
+    if use_cache:
+        cached_content = cache.get(url)
+        if cached_content:
+            logger.debug(f"Using cached content for {url}")
+            return cached_content
+    
     try:
         # Validate URL
         if not url.startswith(('http://', 'https://')):
@@ -79,6 +89,10 @@ def fetch_website_contents(
         # Combine title and content
         full_text = f"{title}\n\n{text}"
         
+        # Cache the content
+        if use_cache and not full_text.startswith('[Error:'):
+            cache.set(url, full_text)
+        
         return full_text
         
     except requests.exceptions.Timeout:
@@ -97,17 +111,32 @@ def fetch_website_contents(
         logger.error(f"Unexpected error fetching {url}: {e}")
         return f"[Error: {str(e)} - {url}]"
 
-def fetch_website_links(url: str, timeout: int = 10) -> List[str]:
+def fetch_website_links(url: str, timeout: int = 10, use_cache: bool = True) -> List[str]:
     """
-    Extract all links from a website.
+    Extract all links from a website with caching support.
     
     Args:
         url: Website URL
         timeout: Request timeout
+        use_cache: Whether to use cached content
         
     Returns:
         List of absolute URLs
     """
+    # Check cache for links
+    if use_cache:
+        cache_key = f"_links_{url}"
+        cached_links = cache.get(cache_key)
+        if cached_links:
+            try:
+                # Cache stores links as JSON string
+                import json
+                links = json.loads(cached_links)
+                logger.debug(f"Using cached links for {url}")
+                return links
+            except:
+                pass
+    
     try:
         response = requests.get(url, headers=HEADERS, timeout=timeout)
         response.raise_for_status()
@@ -137,6 +166,13 @@ def fetch_website_links(url: str, timeout: int = 10) -> List[str]:
                 unique_links.append(link)
         
         logger.debug(f"Found {len(unique_links)} links on {url}")
+        
+        # Cache the links
+        if use_cache and unique_links:
+            import json
+            cache_key = f"_links_{url}"
+            cache.set(cache_key, json.dumps(unique_links))
+        
         return unique_links
         
     except Exception as e:

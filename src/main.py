@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 Company Brochure Generator - Main Entry Point
 """
@@ -31,75 +30,57 @@ def check_prerequisites():
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(
-        description="Generate a professional company brochure using LLMs"
-    )
-    parser.add_argument(
-        "company_name",
-        help="Name of the company"
-    )
-    parser.add_argument(
-        "url",
-        help="Company website URL"
-    )
-    parser.add_argument(
-        "-o", "--output",
-        help="Output file path (default: auto-generated in output/)"
-    )
-    parser.add_argument(
-        "-v", "--verbose",
-        action="store_true",
-        help="Enable verbose logging"
-    )
+    # The CLI already handles argument parsing
+    # This function is called from cli.py after argument parsing
     
-    args = parser.parse_args()
+    # Re-parse arguments to get values
+    import sys
+    if len(sys.argv) < 3:
+        return
     
-    # Set logging level
-    if args.verbose:
-        import logging
-        logger.setLevel(logging.DEBUG)
+    # This will be called from cli.py which handles all argument parsing
+    # We need to get the values from the already parsed arguments
+    # Since cli.py calls this, we'll use a different approach
     
-    # Check prerequisites
-    if not check_prerequisites():
-        sys.exit(1)
-    
-    # Generate brochure
-    logger.info(f"Processing {args.company_name} at {args.url}")
-    
-    try:
-        result = generate_brochure(args.company_name, args.url)
+    # If called directly (without cli), use direct parsing
+    if len(sys.argv) >= 3:
+        company_name = sys.argv[1] if len(sys.argv) > 1 else "Unknown"
+        url = sys.argv[2] if len(sys.argv) > 2 else ""
         
-        if result.get('success', False):
-            # Save to file
-            if args.output:
-                filepath = Path(args.output)
-                filepath.parent.mkdir(parents=True, exist_ok=True)
-                with open(filepath, 'w', encoding='utf-8') as f:
-                    f.write(result['content'])
-            else:
-                filepath = save_brochure(result)
-            
-            logger.info(f"Brochure saved to: {filepath}")
-            
-            # Print preview
-            print("\n" + "="*60)
-            print("BROCHURE PREVIEW")
-            print("="*60)
-            print(result['content'][:500] + ("..." if len(result['content']) > 500 else ""))
-            print("="*60)
-            
-        else:
-            logger.error("Brochure generation failed")
-            if 'error' in result:
-                logger.error(f"Error: {result['error']}")
+        # Check prerequisites
+        if not check_prerequisites():
             sys.exit(1)
+        
+        # Generate brochure
+        logger.info(f"Processing {company_name} at {url}")
+        
+        try:
+            result = generate_brochure(company_name, url)
             
-    except KeyboardInterrupt:
-        logger.warning("Operation cancelled by user")
-        sys.exit(130)
-    except Exception as e:
-        logger.error(f"Unexpected error: {e}")
-        sys.exit(1)
+            if result.get('success', False):
+                filepath = save_brochure(result)
+                logger.info(f"Brochure saved to: {filepath}")
+                
+                # Print preview
+                print("\n" + "="*60)
+                print("BROCHURE PREVIEW")
+                print("="*60)
+                print(result['content'][:500] + ("..." if len(result['content']) > 500 else ""))
+                print("="*60)
+                
+            else:
+                logger.error("Brochure generation failed")
+                if 'error' in result:
+                    logger.error(f"Error: {result['error']}")
+                sys.exit(1)
+                
+        except KeyboardInterrupt:
+            logger.warning("Operation cancelled by user")
+            sys.exit(130)
+        except Exception as e:
+            logger.error(f"Unexpected error: {e}")
+            sys.exit(1)
 
 if __name__ == "__main__":
+    # If run directly, use the direct approach
     main()
