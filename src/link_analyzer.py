@@ -1,5 +1,5 @@
 """
-Link Analyzer Module with Error Handling
+Link Analyzer Module with Better Prompts
 """
 
 import json
@@ -29,39 +29,80 @@ def get_link_analysis_system_prompt() -> str:
     """Get the system prompt for link analysis."""
     return """You are an AI assistant that analyzes website links to identify relevant pages for a company brochure.
 
-Your task:
-1. Review the provided list of links from a company website
-2. Identify which links are most relevant for a professional brochure
-3. Categorize each link with a descriptive type
+Your task is to review the provided list of links from a company website and identify which ones are most relevant for creating a comprehensive brochure.
 
-Relevant page types include:
-- "about" or "about us" pages
-- "careers" or "jobs" pages
-- "products" or "solutions" pages
-- "services" pages
-- "contact" pages
-- "news" or "blog" pages
+Common relevant page types for any company:
+- "about" or "about us" - Company history, mission, team
+- "products" or "solutions" - What they offer
+- "services" - Services they provide
+- "careers" or "jobs" - Employment opportunities
+- "contact" - How to reach them
+- "news" or "blog" - Latest updates
+- "portfolio" or "work" - Past projects or work
+- "team" or "leadership" - Key people
+- "locations" - Office locations
 
 Rules:
 - Ignore links to privacy policy, terms of service, or legal pages
-- Ignore social media links (LinkedIn, Twitter, Facebook, etc.)
+- Ignore social media links (LinkedIn, Twitter, Facebook, Instagram)
 - Ignore login/registration pages
 - Ignore links that are clearly not relevant to the company
+- Prioritize pages that provide substantive information about the company
 
 Respond in JSON format with this structure:
 {
     "links": [
         {"type": "about page", "url": "https://company.com/about"},
-        {"type": "careers page", "url": "https://company.com/careers"}
+        {"type": "services", "url": "https://company.com/services"},
+        {"type": "careers", "url": "https://company.com/careers"}
     ]
-}"""
+}
+
+Only include links you believe are truly relevant. If no links are relevant, return an empty array."""
 
 def get_link_analysis_user_prompt(url: str, links: List[str]) -> str:
     """Build the user prompt for link analysis."""
-    prompt = f"Website URL: {url}\n\nHere are all the links found on the website:\n"
+    prompt = f"Website URL: {url}\n\n"
+    
+    if not links:
+        prompt += "No links found on this website."
+        return prompt
+    
+    prompt += "Here are all the links found on the website (please analyze each one):\n\n"
+    
+    # Group links by domain for better context
+    import urllib.parse
+    base_domain = urllib.parse.urlparse(url).netloc
+    
+    internal_links = []
+    external_links = []
+    
     for link in links:
-        prompt += f"\n- {link}"
-    prompt += "\n\nPlease analyze these links and identify which ones are most relevant for a company brochure."
+        parsed = urllib.parse.urlparse(link)
+        if parsed.netloc == base_domain or not parsed.netloc:
+            internal_links.append(link)
+        else:
+            external_links.append(link)
+    
+    if internal_links:
+        prompt += "Internal Links (same domain):\n"
+        for link in internal_links:
+            prompt += f"  - {link}\n"
+        prompt += "\n"
+    
+    if external_links:
+        prompt += "External Links (different domains - usually less relevant):\n"
+        for link in external_links[:10]:  # Limit external links
+            prompt += f"  - {link}\n"
+        prompt += "\n"
+    
+    prompt += """
+Please identify the most relevant internal pages for creating a comprehensive company brochure.
+Focus on pages that contain substantive information about the company, its offerings, and its people.
+Consider the company type and what information would be most valuable for a brochure.
+
+Return your analysis in JSON format."""
+    
     return prompt
 
 @retry_on_error(max_retries=3, delay=1.0, backoff=2.0)
@@ -111,17 +152,58 @@ def select_relevant_links(url: str) -> Dict[str, Any]:
                 return links_data
             else:
                 logger.warning(f"Unexpected JSON format: {result[:200]}")
-                return {"links": []}
+                # Try to recover
+                return _recover_links(all_links)
                 
         except json.JSONDecodeError as e:
             logger.error(f"JSON parse error: {e}")
             # Try to extract links from raw text
             extracted = _extract_links_from_text(result)
-            return {"links": extracted}
+            if extracted:
+                return {"links": extracted}
+            else:
+                # Fallback: use common page names
+                return _recover_links(all_links)
             
     except Exception as e:
         logger.error(f"LLM call failed: {e}")
-        raise
+        # Fallback: use common page names
+        return _recover_links(all_links)
+
+def _recover_links(all_links: List[str]) -> Dict[str, Any]:
+    """
+    Fallback: Try to find relevant links using common patterns.
+    
+    Args:
+        all_links: List of all links
+        
+    Returns:
+        Dictionary with recovered links
+    """
+    import urllib.parse
+    
+    relevant_types = {
+        'about': ['about', 'about-us', 'aboutus', 'who-we-are', 'company'],
+        'services': ['services', 'solutions', 'offerings'],
+        'products': ['products', 'product', 'merchandise'],
+        'careers': ['careers', 'jobs', 'join-us', 'work-with-us'],
+        'contact': ['contact', 'contact-us', 'get-in-touch'],
+        'news': ['news', 'blog', 'press', 'updates'],
+        'portfolio': ['portfolio', 'work', 'projects', 'case-studies'],
+        'team': ['team', 'leadership', 'people', 'staff']
+    }
+    
+    links = []
+    base_domain = urllib.parse.urlparse(all_links[0] if all_links else '').netloc
+    
+    for link in all_links:
+        link_lower = link.lower()
+        for page_type, keywords in relevant_types.items():
+            if any(keyword in link_lower for keyword in keywords):
+                links.append({"type": page_type, "url": link})
+                break
+    
+    return {"links": links}
 
 def _extract_links_from_text(text: str) -> List[Dict[str, str]]:
     """Fallback: Extract links from raw text response."""
@@ -133,7 +215,23 @@ def _extract_links_from_text(text: str) -> List[Dict[str, str]]:
     urls = re.findall(url_pattern, text)
     
     for url in urls[:10]:  # Limit to 10 links
-        links.append({"type": "page", "url": url})
+        # Try to determine page type from URL
+        url_lower = url.lower()
+        page_type = 'page'
+        if 'about' in url_lower:
+            page_type = 'about'
+        elif 'service' in url_lower or 'solution' in url_lower:
+            page_type = 'services'
+        elif 'product' in url_lower:
+            page_type = 'products'
+        elif 'career' in url_lower or 'job' in url_lower:
+            page_type = 'careers'
+        elif 'contact' in url_lower:
+            page_type = 'contact'
+        elif 'news' in url_lower or 'blog' in url_lower:
+            page_type = 'news'
+        
+        links.append({"type": page_type, "url": url})
     
     return links
 
